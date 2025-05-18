@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Agenda Toastmasters</title>
+  <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/1828/1828884.png" type="image/png" />
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;700&display=swap" rel="stylesheet"/>
+  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/main.min.css" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/main.min.js"></script>
+  <style>
+    body {
+      font-family: 'Open Sans', sans-serif;
+      background: #f0f4f8;
+      margin: 0;
+      padding: 0;
+      color: #333;
+    }
+    .container {
+      max-width: 1000px;
+      margin: 30px auto;
+      background: #fff;
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    h2, h3 {
+      color: #00558C;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    label {
+      font-weight: bold;
+      display: block;
+      margin-top: 15px;
+    }
+    input, select, textarea, button {
+      width: 100%;
+      padding: 10px;
+      margin-top: 5px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      font-size: 1rem;
+    }
+    button {
+      background-color: #8A1F2C;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+    button:hover {
+      background-color: #a42e3b;
+    }
+    canvas {
+      margin-top: 25px;
+    }
+  </style>
+</head>
+<body>
+  <div style="text-align:center; margin-top:30px;" id="inicioMensaje">
+    <h2>Agenda Toastmasters</h2>
+    <p style="color:#777">La aplicación se está cargando. Si no ves nada, revisa tu configuración de Firebase o consulta la consola del navegador (F12).</p>
+  </div>
+
+  <div class="container" id="resumenSection" style="display:none">
+    <h2>Resumen Visual de Participación</h2>
+    <canvas id="graficoDiscursosNivel"></canvas>
+    <canvas id="graficoDiscursosClub"></canvas>
+    <canvas id="graficoDiscursosMes"></canvas>
+    <hr />
+    <canvas id="graficoFuncionesTipo"></canvas>
+    <canvas id="graficoFuncionesClub"></canvas>
+    <canvas id="graficoFuncionesMes"></canvas>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js';
+    import { getFirestore, collection, getDocs, query, where } from 'https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js';
+    import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js';
+
+    const firebaseConfig = {
+      apiKey: "TU_API_KEY",
+      authDomain: "TU_DOMINIO.firebaseapp.com",
+      projectId: "TU_ID_PROYECTO",
+      storageBucket: "TU_BUCKET.appspot.com",
+      messagingSenderId: "TU_SENDER_ID",
+      appId: "TU_APP_ID"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore();
+    const auth = getAuth();
+
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        document.getElementById("inicioMensaje").style.display = "none";
+        document.getElementById("resumenSection").style.display = "block";
+        await cargarResumenVisual(user.uid);
+      }
+    });
+
+    async function cargarResumenVisual(uid) {
+      const [funcionesSnap, discursosSnap] = await Promise.all([
+        getDocs(query(collection(db, "funciones"), where("uid", "==", uid))),
+        getDocs(query(collection(db, "discursos"), where("uid", "==", uid)))
+      ]);
+
+      const nivelCounts = {}, clubCounts = {}, mesCounts = {}, tipoCounts = {}, clubFunc = {}, mesFunc = {};
+
+      discursosSnap.forEach(doc => {
+        const d = doc.data();
+        nivelCounts[d.nivel] = (nivelCounts[d.nivel] || 0) + 1;
+        clubCounts[d.club] = (clubCounts[d.club] || 0) + 1;
+        const mes = d.fecha?.slice(0,7) || "";
+        mesCounts[mes] = (mesCounts[mes] || 0) + 1;
+      });
+
+      funcionesSnap.forEach(doc => {
+        const f = doc.data();
+        tipoCounts[f.tipo] = (tipoCounts[f.tipo] || 0) + 1;
+        clubFunc[f.club] = (clubFunc[f.club] || 0) + 1;
+        const mes = f.fecha?.slice(0,7) || "";
+        mesFunc[mes] = (mesFunc[mes] || 0) + 1;
+      });
+
+      crearGraficoBarras("graficoDiscursosNivel", "Discursos por Nivel", nivelCounts);
+      crearGraficoBarras("graficoDiscursosClub", "Discursos por Club", clubCounts);
+      crearGraficoBarras("graficoDiscursosMes", "Discursos por Mes", mesCounts);
+      crearGraficoBarras("graficoFuncionesTipo", "Funciones por Tipo", tipoCounts);
+      crearGraficoBarras("graficoFuncionesClub", "Funciones por Club", clubFunc);
+      crearGraficoBarras("graficoFuncionesMes", "Funciones por Mes", mesFunc);
+    }
+
+    function crearGraficoBarras(id, titulo, data) {
+      const ctx = document.getElementById(id).getContext("2d");
+      new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: Object.keys(data),
+          datasets: [{
+            label: titulo,
+            data: Object.values(data),
+            backgroundColor: "#00558C"
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false },
+            title: { display: true, text: titulo }
+          }
+        }
+      });
+    }
+  </script>
+</body>
+</html>
